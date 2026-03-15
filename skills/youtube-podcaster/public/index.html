@@ -1,1 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube to AI Podcast</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f4f4f9; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+        h1 { color: #2c3e50; text-align: center; }
+        .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.9em; }
+        .help-text { font-weight: normal; font-size: 0.8em; color: #7f8c8d; margin-left: 5px; }
+        input[type="text"], input[type="url"], input[type="password"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 1em; }
+        .row { display: flex; gap: 15px; }
+        .row .form-group { flex: 1; }
+        
+        button { background-color: #3498db; color: white; border: none; padding: 15px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; transition: background 0.3s; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        .clear-btn { background-color: #e74c3c; padding: 5px 10px; font-size: 0.8em; width: auto; float: right; margin-top: -5px; }
+        .clear-btn:hover { background-color: #c0392b; }
 
+        .spinner { display: none; width: 18px; height: 18px; border: 3px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: #ffffff; animation: spin 1s ease-in-out infinite; vertical-align: middle; margin-right: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #log-container { background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 4px; font-family: monospace; height: 250px; overflow-y: auto; margin-top: 20px; white-space: pre-wrap; font-size: 0.9em; display: none; }
+        #result-container { display: none; text-align: center; margin-top: 20px; padding: 20px; background: #e8f8f5; border-radius: 8px; border: 1px solid #1abc9c; }
+        audio { width: 100%; margin-top: 15px; border-radius: 4px; outline: none; }
+        #live-transcript { margin-top: 15px; padding: 20px; background: #ffffff; border-left: 5px solid #1abc9c; border-radius: 4px; font-size: 1.1em; min-height: 3em; text-align: left; color: #2c3e50; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+        #live-transcript strong { color: #16a085; }
+        
+        .links { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        .links a { display: inline-block; color: #16a085; text-decoration: none; font-weight: bold; border: 1px solid #16a085; padding: 8px 15px; border-radius: 4px; transition: all 0.2s; }
+        .links a:hover { background: #16a085; color: white; }
+    </style>
+</head>
+<body>
+    <h1>🎙️ YouTube to AI Podcast</h1>
+    <div class="card">
+        <form id="podcast-form">
+            <div class="form-group">
+                <label for="apiKey">
+                    Gemini API Key (Required) 
+                    <span class="help-text">Never stored on our servers.</span>
+                    <button type="button" id="clear-key-btn" class="clear-btn" style="display: none;">Clear Saved Key</button>
+                </label>
+                <input type="password" id="apiKey" placeholder="AIzaSy..." required>
+            </div>
+            <div class="form-group">
+                <label for="url">YouTube URL (Required)</label>
+                <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." required>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label for="host1">Host 1 Name</label>
+                    <input type="text" id="host1" placeholder="Alex (Default)">
+                </div>
+                <div class="form-group">
+                    <label for="host2">Host 2 Name</label>
+                    <input type="text" id="host2" placeholder="Sam (Default)">
+                </div>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label for="targetLanguage">Target Language (Optional)</label>
+                    <input type="text" id="targetLanguage" placeholder="e.g., Spanish">
+                </div>
+                <div class="form-group">
+                    <label for="searchPhrase">Search Phrase (Optional)</label>
+                    <input type="text" id="searchPhrase" placeholder="Find a specific quote...">
+                </div>
+            </div>
+            <button type="submit" id="generate-btn">
+                <span id="btn-spinner" class="spinner"></span>
+                <span id="btn-text">Generate Podcast</span>
+            </button>
+        </form>
+    </div>
+
+    <div id="log-container"></div>
+    
+    <div id="result-container">
+        <h2 style="margin-top: 0; color: #16a085;">✅ Podcast Ready!</h2>
+        <audio id="audio-player" controls preload="metadata"></audio>
+        <div id="live-transcript">Press play to start the transcript...</div>
+        <div class="links">
+            <a id="download-mp3" href="#" download>🎵 Download MP3</a>
+            <a id="download-vtt" href="#" download>📝 Podcast VTT</a>
+            <a id="download-original-vtt" href="#" download>📄 Original Video VTT</a>
+            <a id="download-original-txt" href="#" download>📝 Original Video Text</a>
+        </div>
+    </div>
+
+    <script>
+        // Load the saved API key when the page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) {
+                document.getElementById('apiKey').value = savedKey;
+                document.getElementById('clear-key-btn').style.display = 'inline-block';
+            }
+        });
+
+        // Handle the "Clear Saved Key" button
+        document.getElementById('clear-key-btn').addEventListener('click', function() {
+            localStorage.removeItem('gemini_api_key');
+            document.getElementById('apiKey').value = '';
+            this.style.display = 'none';
+        });
+
+        // Handle form submission
+        document.getElementById('podcast-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('generate-btn');
+            const btnText = document.getElementById('btn-text');
+            const btnSpinner = document.getElementById('btn-spinner');
+            const logContainer = document.getElementById('log-container');
+            const resultContainer = document.getElementById('result-container');
+            const audioPlayer = document.getElementById('audio-player');
+            const liveTranscript = document.getElementById('live-transcript');
+            
+            btn.disabled = true;
+            btnSpinner.style.display = 'inline-block';
+            btnText.innerText = "Generating... (This may take a few minutes)";
+            logContainer.style.display = 'block';
+            logContainer.innerText = "Initializing connection...\n";
+            resultContainer.style.display = 'none';
+            audioPlayer.innerHTML = ''; 
+            liveTranscript.innerHTML = 'Press play to start the transcript...';
+
+            // Gather inputs
+            const rawApiKey = document.getElementById('apiKey').value.trim();
+            const apiKey = encodeURIComponent(rawApiKey);
+            const rawUrl = document.getElementById('url').value.trim();
+            const url = encodeURIComponent(rawUrl);
+            const host1 = encodeURIComponent(document.getElementById('host1').value.trim());
+            const host2 = encodeURIComponent(document.getElementById('host2').value.trim());
+            const targetLanguage = encodeURIComponent(document.getElementById('targetLanguage').value.trim());
+            const searchPhrase = encodeURIComponent(document.getElementById('searchPhrase').value.trim());
+
+            // Save key to local storage
+            if (rawApiKey) {
+                localStorage.setItem('gemini_api_key', rawApiKey);
+                document.getElementById('clear-key-btn').style.display = 'inline-block';
+            }
+
+            // Build query string
+            let query = `?url=${url}&apiKey=${apiKey}`;
+            if (host1) query += `&host1=${host1}`;
+            if (host2) query += `&host2=${host2}`;
+            if (targetLanguage) query += `&targetLanguage=${targetLanguage}`;
+            if (searchPhrase) query += `&searchPhrase=${searchPhrase}`;
+
+            const eventSource = new EventSource('/api/generate-podcast' + query);
+
+            eventSource.onmessage = function(event) {
+                const msg = event.data;
+                
+                if (msg.startsWith('FILE_READY:')) {
+                    const mp3File = msg.split(':')[1];
+                    const vttFile = mp3File.replace('.mp3', '.vtt');
+                    
+                    // Calculate original transcript filenames
+                    const videoId = rawUrl.split('v=')[1]?.split('&')[0] || "video";
+                    const originalVttFile = `${videoId}_original.vtt`;
+                    const originalTxtFile = `${videoId}_original.txt`;
+                    
+                    audioPlayer.src = `/downloads/${mp3File}`;
+                    
+                    const track = document.createElement('track');
+                    track.kind = 'captions';
+                    track.label = 'English';
+                    track.srclang = 'en';
+                    track.src = `/downloads/${vttFile}`;
+                    track.default = true;
+                    audioPlayer.appendChild(track);
+
+                    track.addEventListener('load', function() {
+                        const textTrack = audioPlayer.textTracks[0];
+                        textTrack.mode = 'hidden'; 
+                        textTrack.oncuechange = function(e) {
+                            const cues = e.target.activeCues;
+                            if (cues && cues.length > 0) {
+                                liveTranscript.innerHTML = cues[0].text.replace(/<v ([^>]+)>/, '<strong>$1:</strong> ');
+                            } else {
+                                liveTranscript.innerHTML += ' <span style="color:#bdc3c7;">...</span>';
+                            }
+                        };
+                    });
+
+                    // Update all four download links
+                    document.getElementById('download-mp3').href = `/downloads/${mp3File}`;
+                    document.getElementById('download-vtt').href = `/downloads/${vttFile}`;
+                    document.getElementById('download-original-vtt').href = `/downloads/${originalVttFile}`;
+                    document.getElementById('download-original-txt').href = `/downloads/${originalTxtFile}`;
+                    
+                    resultContainer.style.display = 'block';
+                    btn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.innerText = "Generate Another Podcast";
+                    eventSource.close();
+                    return;
+                }
+                
+                if (msg.startsWith('ERROR:')) {
+                    logContainer.innerText += `\n❌ ${msg}\n`;
+                    btn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.innerText = "Try Again";
+                    eventSource.close();
+                    return;
+                }
+
+                logContainer.innerText += msg + '\n';
+                logContainer.scrollTop = logContainer.scrollHeight;
+            };
+
+            eventSource.onerror = function() {
+                logContainer.innerText += `\n❌ Connection lost. Check your API key and try again.\n`;
+                btn.disabled = false;
+                btnSpinner.style.display = 'none';
+                btnText.innerText = "Generate Podcast";
+                eventSource.close();
+            };
+        });
+    </script>
+</body>
+</html>
