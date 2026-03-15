@@ -1,0 +1,19 @@
+{
+  "name": "youtube-podcaster",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/genai": "^1.45.0",
+    "express": "^5.2.1",
+    "fluent-ffmpeg": "^2.1.3",
+    "youtube-transcript-plus": "^1.2.0"
+  }
+}
