@@ -1,39 +1,58 @@
 ---
 name: youtube-podcaster
-description: Converts a YouTube video into a multi-voice AI podcast using a local API.
+description: Converts a YouTube video into a multi-voice AI podcast using a local Node.js API and FFmpeg.
 metadata:
   openclaw:
     requires:
       bins:
         - curl
+        - node
+        - npm
+        - ffmpeg
+      env:
+        - GEMINI_API_KEY
 ---
 
 # YouTube Podcaster
 
-This skill allows you to convert YouTube videos into "NotebookLM style" podcasts. It enables to automate the creation of Podcast.
+This skill allows you to convert YouTube videos into "NotebookLM style" podcasts. It automates the transcription, script drafting, and high-fidelity audio synthesis of a multi-host discussion based on any public YouTube video.
 
-Before that you need to say `Run the npm install command for the youtube-podcaster skill`. This step you need to do only once. You can provide the Gemini API Key in the .env file in the folder `youtube-podcaster` under the `skills` folder. Then just say `create podcast for the video https://www.youtube.com/watch?v=<video id> using youtube-podcaster skill`
+## Prerequisites & Installation
+This skill requires **Node.js** and **FFmpeg** to be installed on your system.
 
-The skill will call the following 3 APIs 
-1. POST /api/transcribe with the YouTube URL and a unique session id.
-2. POST /api/draft-script with that same id, host names, optional language, and a valid Gemini API key (x-api-key header).
-3. POST /api/synthesize with the generated script, id, and the same Gemini key.
+1. **Install Dependencies:** You must run the install command once before the first use. Say: 
+   `Run the npm install command for the youtube-podcaster skill`.
+2. **Set Credentials:** Provide your Gemini API key in a `.env` file located at `skills/youtube-podcaster/.env` using the variable name `GEMINI_API_KEY`.
+3. **Start the Server:** The automation requires the local server to be active. Say:
+   `Start the local server for the youtube-podcaster skill`.
+
+## Usage
+Once the server is running, you can generate a podcast by saying:
+`Create a podcast for the video https://www.youtube.com/watch?v=<video_id> using the youtube-podcaster skill`
+
+The skill orchestrates three local API calls:
+1. **Transcription:** Pulls text and subtitles from YouTube.
+2. **Scripting:** Uses **Gemini 2.5 Flash** to draft a conversational dialogue between two hosts.
+3. **Synthesis:** Uses **Gemini 2.5 Flash TTS** and **FFmpeg** to create a gapless `.m4a` audio file.
+
+## File Locations & Persistence
+All generated artifacts are stored in a session-specific subfolder within the skill's directory:
+`skills/youtube-podcaster/downloads/<session_id>/`
+
+* **Audio:** `podcast.m4a`
+* **Captions:** `podcast.vtt` (Synced subtitles for the audio)
+* **Scripts:** `script.txt` (The dialogue) and `original.txt` (The source transcript)
+
+## Security & Privacy
+* **Localhost Binding:** The server binds to `localhost:7860` by default. It is not accessible from the public internet unless you explicitly configure a tunnel or firewall rule.
+* **Data Persistence:** Files remain on disk until the hourly garbage collector runs or you manually delete the `downloads` folder.
+* **API Usage:** This skill performs network calls to Google's Gemini API and YouTube's transcript service.
+
+## Safe Cleanup
+When you are finished using the studio, you should shut down the background Node.js process to free up system resources. 
+Instruct the agent to:
+`Stop the youtube-podcaster server process` 
+(The agent will execute `pkill -f "node index.js"` to target the specific process safely).
 
 ## Source Code
-- The source code can be found in the Github repo - https://github.com/kaudata/youtube-podcaster
-
-## Where to find the generated audio file?
-- The filename of the audio file is `podcast.m4a` and you can find it in the `downloads` folder in the `skills/youtube-podcaster/` folder
-- You can also see the text of the podcast by looking at `script.txt` file in the same folder where `podcast.m4a` file is.
-- You can also see the original text of the youtube video by looking at `original.txt` file in the same folder where `podcast.m4a` file is. 
-- Apart from this you can also see the closed caption text file in WebVTT format of the original video by looking at `original.vtt` file and the closed caption text of the podcast file in `podcast.vtt` file
-
-## Cleanup
-- Once you are done look at the running node processes by using the command `ps aux | grep node` and try to kill the appropriate node process or you can also issue the command `pkill -n node` which means that you are killing the newest node server process 
-
-
-
-
-
-
-
+The source code is available at: [https://github.com/kaudata/youtube-podcaster](https://github.com/kaudata/youtube-podcaster)
