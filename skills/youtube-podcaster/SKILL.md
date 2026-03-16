@@ -10,38 +10,30 @@ metadata:
 
 # YouTube Podcaster
 
-This skill allows you to convert YouTube videos into "NotebookLM style" podcasts.
+This skill allows you to convert YouTube videos into "NotebookLM style" podcasts. It enables to automate the creation of Podcast.
 
-## Requirements
-- You need Node.js and FFmpeg installed. If you are using Mac, then use the command
-brew install node ffmpeg
+Before that you need to say `Run the npm install command for the youtube-podcaster skill`. This step you need to do only once. You can provide the Gemini API Key in the .env file in the folder `youtube-podcaster` under the `skills` folder. Then just say `create podcast for the video https://www.youtube.com/watch?v=<video id> using youtube-podcaster skill`
 
-- Set up the Node environment. Run these commands one by one:
-mkdir ~/Desktop/youtube-podcaster
-cd ~/Desktop/youtube-podcaster
-npm init -y
-npm install express @google/genai fluent-ffmpeg youtube-transcript-plus
-mkdir public downloads
+The skill will call the following 3 APIs 
+1. POST /api/transcribe with the YouTube URL and a unique session id.
+2. POST /api/draft-script with that same id, host names, optional language, and a valid Gemini API key (x-api-key header).
+3. POST /api/synthesize with the generated script, id, and the same Gemini key.
 
-- Inside the public folder, there should be index.html
+## Source Code
+- The source code can be found in the Github repo - https://github.com/kaudata/youtube-podcaster
 
-- Ensure the local Podcast API is running at `http://localhost:7860` by running the command
-node index.js
+## Where to find the generated audio file?
+- The filename of the audio file is `podcast.m4a` and you can find it in the `downloads` folder in the `skills/youtube-podcaster/` folder
+- You can also see the text of the podcast by looking at `script.txt` file in the same folder where `podcast.m4a` file is.
+- You can also see the original text of the youtube video by looking at `original.txt` file in the same folder where `podcast.m4a` file is. 
+- Apart from this you can also see the closed caption text file in WebVTT format of the original video by looking at `original.vtt` file and the closed caption text of the podcast file in `podcast.vtt` file
 
-## How to use
-- Go to the URL http://localhost:7860/ and you will see the html file being rendered. 
-- Make sure you get the Gemini API key. API key is stored in browsers localStorage. Make sure to use the "Clear Saved Key" button in red color in case you don't want to persist the API key.
-- Enter the Youtube URL with a pattern https://www.youtube.com/watch?v= 
-- Enter the host 1 name (Female) and host 2 name (Male)
-- Target Language is Optional. 
-- Search Phrase is optional too. It generates the URL string to jump to that section in the original youtube video
+## Cleanup
+- Once you are done look at the running node processes by using the command `ps aux | grep node` and try to kill the appropriate node process or you can also issue the command `pkill -n node` which means that you are killing the newest node server process 
 
-### Required Parameters
-You can use the curl command too using the following parameters
-- `url`: The YouTube URL requested by the user.
-- `apiKey`: The user's Gemini API key (ask the user for this if not provided in the prompt/environment).
-- `host1` & `host2`: Optional names for the hosts.
 
-### Example Usage
-```bash
-curl "http://localhost:7860/api/generate-podcast?url=YOUTUBE_URL&apiKey=YOUR_API_KEY&host1=Alex&host2=Sam"
+
+
+
+
+
