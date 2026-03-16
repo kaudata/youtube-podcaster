@@ -1,37 +1,35 @@
-# YouTube Podcaster
+# 🎙️ AI Podcast Studio
 
-This Openclaw skill allows you to convert YouTube videos into "NotebookLM style" podcasts.
+A secure, multi-step web application that converts YouTube videos into NotebookLM-style multi-host AI podcasts. 
 
-## Requirements
-- You need Node.js and FFmpeg installed. If you are using Mac, then use the command
-brew install node ffmpeg
+This project extracts YouTube transcripts, utilizes **Google's Gemini 2.5 Flash** model to draft conversational scripts, and leverages the **Gemini 2.5 Flash TTS** model to synthesize high-fidelity, gapless, multi-speaker audio.
 
-- Set up the Node environment. Run these commands one by one:
-mkdir ~/Desktop/youtube-podcaster
-cd ~/Desktop/youtube-podcaster
-npm init -y
-npm install express @google/genai fluent-ffmpeg youtube-transcript-plus
-mkdir public downloads
+## ✨ Features
+* **Automated Transcription:** Instantly pulls transcripts and generates `.vtt` subtitle files from any public YouTube URL.
+* **Semantic Search:** Query the video's transcript using natural language to jump to specific timestamps.
+* **AI Scripting Engine:** Automatically formats dense video transcripts into engaging, multi-host dialogues in your target language.
+* **High-Fidelity Audio Synthesis:** Generates natural, conversational audio with dynamic pacing and gapless speaker transitions.
+* **In-Memory Job Queue:** Safely handles concurrent audio generation requests without crashing the server's CPU or RAM.
+* **Secure API Key Handling:** Utilizes a Bring-Your-Own-Key (BYOK) architecture where user keys are secured in browser memory and obfuscated from the DOM.
 
-- Inside the public folder, there should be index.html
+## 🛠️ Tech Stack
+* **Frontend:** HTML5, CSS3, Vanilla JavaScript
+* **Backend:** Node.js, Express.js
+* **AI Provider:** Google Gemini API (`@google/genai`)
+* **Audio Engine:** FFmpeg (Raw PCM to M4A encoding)
 
-- Ensure the local Podcast API is running at `http://localhost:7860` by running the command
-node index.js
+---
 
-## How to use
-- Go to the URL http://localhost:7860/ and you will see the html file being rendered. 
-- Make sure you get the Gemini API key. API key is stored in browsers localStorage. Make sure to use the "Clear Saved Key" button in red color in case you don't want to persist the API key.
-- Enter the Youtube URL with a pattern https://www.youtube.com/watch?v= 
-- Enter the host 1 name (Female) and host 2 name (Male)
-- Target Language is Optional. 
-- Search Phrase is optional too. It generates the URL string to jump to that section in the original youtube video
+## 💻 Local Development Setup
 
-### Required Parameters
-You can use the curl command too using the following parameters
-- `url`: The YouTube URL requested by the user.
-- `apiKey`: The user's Gemini API key (ask the user for this if not provided in the prompt/environment).
-- `host1` & `host2`: Optional names for the hosts.
+### 1. Prerequisites
+You must have the following installed on your local machine:
+* **Node.js** (v20.0.0 or higher)
+* **FFmpeg** (Must be installed on your system OS and accessible via your system's PATH. *Note: `fluent-ffmpeg` is just a Node wrapper, it requires the actual FFmpeg software to function.*)
 
-### Example Usage
+### 2. Installation
+Clone the repository and install the Node dependencies:
 ```bash
-curl "http://localhost:7860/api/generate-podcast?url=YOUTUBE_URL&apiKey=YOUR_API_KEY&host1=Alex&host2=Sam"
+git clone [https://github.com/yourusername/youtube-podcaster-studio.git](https://github.com/yourusername/youtube-podcaster-studio.git)
+cd youtube-podcaster-studio
+npm install
