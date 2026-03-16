@@ -1,0 +1,22 @@
+# --- Node Dependencies ---
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# --- Security / Environment Variables ---
+.env
+.env.local
+.env.*
+
+# --- App Specific Dynamic Data ---
+# We ignore the downloads folder so we don't push massive .m4a 
+# and .zip files to GitHub every time we test the app.
+downloads/
+
+# --- OS Junk Files ---
+.DS_Store
+Thumbs.db
+
+# --- Optional Editor Directories ---
+.vscode/
+.idea/
