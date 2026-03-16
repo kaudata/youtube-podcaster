@@ -30,6 +30,6 @@ You must have the following installed on your local machine:
 ### 2. Installation
 Clone the repository and install the Node dependencies:
 ```bash
-git clone [https://github.com/yourusername/youtube-podcaster-studio.git](https://github.com/yourusername/youtube-podcaster-studio.git)
-cd youtube-podcaster-studio
+git clone [https://github.com/kaudata/youtube-podcaster.git](https://github.com/kaudata/youtube-podcaster.git)
+cd youtube-podcaster
 npm install
