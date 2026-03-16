@@ -1,6 +1,6 @@
 # 🎙️ AI Podcast Studio
 
-A secure, multi-step web application that converts YouTube videos into NotebookLM-style multi-host AI podcasts. 
+A secure, multi-step web application that converts YouTube videos into NotebookLM-style multi-host AI podcasts using `youtube-transcript-plus` package. 
 
 This project extracts YouTube transcripts, utilizes **Google's Gemini 2.5 Flash** model to draft conversational scripts, and leverages the **Gemini 2.5 Flash TTS** model to synthesize high-fidelity, gapless, multi-speaker audio.
 
