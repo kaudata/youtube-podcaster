@@ -12,26 +12,37 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 const port = process.env.PORT || 7860;
+const host = '127.0.0.1'; // 🔒 STRICT LOCALHOST BINDING FOR SECURITY
 
-// Trust the first proxy in front of Express so rate-limiting maps to the actual user IP
+// --- SECURITY: Process ID Tracking for Safe Shutdown ---
+const pidPath = path.join(__dirname, '.podcaster.pid');
+fs.writeFileSync(pidPath, process.pid.toString());
+
+// Trust proxy for rate-limiting if deployed behind a local load balancer
 app.set('trust proxy', 1); 
 
 // --- MIDDLEWARE ---
 app.use(express.static('public'));
-app.use('/downloads', express.static(path.join(__dirname, 'downloads'))); // Expose downloads for previews
+app.use('/downloads', express.static(path.join(__dirname, 'downloads'))); 
 app.use(express.json({ limit: '50mb' }));
+
+// --- HELPER: Unified API Key Resolver ---
+// Prioritizes server-side .env key to keep it off the network, falls back to header
+const getApiKey = (req) => {
+    return process.env.GEMINI_API_KEY || req.headers['x-api-key'];
+};
 
 // --- SECURITY: RATE LIMITING ---
 const globalApiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
-    max: 50,
+    max: 100,
     message: { error: "Too many requests, please slow down." }
 });
 
 const synthesizeLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, 
-    max: 5, 
-    message: { error: "Too many podcasts generated from this IP, please try again after an hour." },
+    max: 10, 
+    message: { error: "Too many podcasts generated. Please try again later." },
     standardHeaders: true,
     legacyHeaders: false,
 });
@@ -41,28 +52,23 @@ app.use('/api/', globalApiLimiter);
 // --- FILE SYSTEM SETUP ---
 const downloadsDir = path.join(__dirname, 'downloads');
 
-// Safe startup: Do NOT wipe the directory to protect active cloud volumes
 if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
     console.log("✨ Created downloads directory.");
-} else {
-    console.log("📂 Downloads directory found. Relying on Hourly Garbage Collector for cleanup.");
 }
 
 // --- IN-MEMORY JOB TRACKER & QUEUE ---
 const jobs = {};
 const jobQueue = [];
 let activeJobs = 0;
-const MAX_CONCURRENT_JOBS = 2; // Limit this to your server's CPU core count
+const MAX_CONCURRENT_JOBS = 2; 
 
 function processNextJob() {
     if (activeJobs >= MAX_CONCURRENT_JOBS || jobQueue.length === 0) return;
     
     const queuedItem = jobQueue.shift(); 
     
-    // Check if user closed the tab or deleted the job while waiting
     if (!jobs[queuedItem.id] || jobs[queuedItem.id].status === 'cancelled') {
-        console.log(`[Queue] 🛑 Skipping cancelled job: ${queuedItem.id}`);
         return processNextJob(); 
     }
     
@@ -79,16 +85,13 @@ setInterval(() => {
     console.log("🧹 Running routine cleanup of stale data...");
     const now = Date.now();
 
-    // 1. Sweep In-Memory Jobs
     for (const id in jobs) {
         if (now - jobs[id].timestamp > 60 * 60 * 1000) {
             if (jobs[id].process) jobs[id].process.kill('SIGKILL');
             delete jobs[id];
-            console.log(`🗑️ Auto-deleted stale memory job: ${id}`);
         }
     }
 
-    // 2. Sweep Hard Drive
     if (!fs.existsSync(downloadsDir)) return;
     const folders = fs.readdirSync(downloadsDir);
 
@@ -98,11 +101,8 @@ setInterval(() => {
             const stats = fs.statSync(folderPath);
             if (now - stats.mtimeMs > 60 * 60 * 1000) {
                 fs.rmSync(folderPath, { recursive: true, force: true });
-                console.log(`🗑️ Auto-deleted stale session folder: ${folder}`);
             }
-        } catch (err) {
-            console.error(`❌ Failed to check/delete ${folder}:`, err.message);
-        }
+        } catch (err) {}
     });
 }, 60 * 60 * 1000);
 
@@ -120,7 +120,6 @@ function timestampToSeconds(ts) {
 }
 
 function formatVTTTime(totalSeconds) {
-    // Convert to total ms first to eliminate floating-point carry-over bugs
     const totalMs = Math.round(totalSeconds * 1000);
     const h = Math.floor(totalMs / 3600000);
     const m = Math.floor((totalMs % 3600000) / 60000);
@@ -158,7 +157,7 @@ app.post('/api/transcribe', async (req, res) => {
 // 2. Semantic VTT Search (POST)
 app.post('/api/search', async (req, res) => {
     const { id, query } = req.body;
-    const apiKey = req.headers['x-api-key'];
+    const apiKey = getApiKey(req);
     if (!apiKey) return res.status(401).json({ error: "API Key required" });
     if (!query) return res.status(400).json({ error: "Search query required" });
 
@@ -183,8 +182,8 @@ app.post('/api/search', async (req, res) => {
 // 3. Draft Script (POST)
 app.post('/api/draft-script', async (req, res) => {
     const { id, host1 = 'Alex', host2 = 'Sam', targetLanguage = 'English' } = req.body;
-    const apiKey = req.headers['x-api-key'];
-    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    const apiKey = getApiKey(req);
+    if (!apiKey) return res.status(401).json({ error: "API Key required in .env or header" });
 
     const safeId = sanitizeId(id);
     const txtPath = path.join(downloadsDir, safeId, 'original.txt');
@@ -205,10 +204,10 @@ app.post('/api/draft-script', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. Synthesize Audio (POST) - Background Worker with Rate Limiting
+// 4. Synthesize Audio (POST)
 app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
     const { id, script, host1 = 'Alex', host2 = 'Sam' } = req.body;
-    const apiKey = req.headers['x-api-key'];
+    const apiKey = getApiKey(req);
 
     if (!apiKey) return res.status(401).json({ error: "API Key required" });
     if (!script) return res.status(400).json({ error: "Script content required" });
@@ -306,7 +305,6 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
                     const lineNum = i + 1;
                     const lineText = segments[i].t;
                     jobs[safeId].message = `Synthesizing chunk ${lineNum} of ${segments.length}...`;
-                    console.log(`[Job: ${safeId}] 🎙️ Starting chunk ${lineNum}/${segments.length}...`);
                     
                     const voiceName = segments[i].s.toLowerCase().includes(maleHostRef) ? "Puck" : "Aoede";
                     
@@ -337,35 +335,30 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
                             if (audioData.length > 44 && audioData.toString('utf8', 0, 4) === 'RIFF') {
                                 audioData = audioData.subarray(44); 
                             }
-
-                            console.log(`[Job: ${safeId}] ✅ Chunk ${lineNum} success!`);
                             break; 
                         } catch (apiError) {
                             attempt++;
                             const errorMessage = apiError.message || "";
-                            console.error(`[Job: ${safeId}] ⚠️ Error on segment ${lineNum} (Attempt ${attempt}):`, errorMessage);
                             
                             const isQuotaExhausted = errorMessage.includes('Quota exceeded') || errorMessage.includes('RESOURCE_EXHAUSTED');
                             if (isQuotaExhausted) {
-                                console.error(`[Job: ${safeId}] ❌ Daily API quota exhausted.`);
-                                jobs[safeId] = { status: 'error', message: "API Daily Quota Exceeded (100 requests/day). Please try again tomorrow or upgrade your API tier." };
+                                jobs[safeId] = { status: 'error', message: "API Daily Quota Exceeded (100 requests/day)." };
                                 return resolveTask();
                             }
 
-                            const isRateLimit = apiError.status === 429 || errorMessage.includes('429') || errorMessage.includes('Too Many Requests');
+                            const isRateLimit = apiError.status === 429 || errorMessage.includes('429');
                             if (attempt > maxRetries || !isRateLimit) {
-                                console.error(`[Job: ${safeId}] ❌ Segment ${lineNum} failed permanently. Skipping.`);
                                 break; 
                             }
                             
                             const backoffDelay = Math.pow(2, attempt) * 1000; 
-                            jobs[safeId].message = `API Rate Limit paused. Retrying segment ${lineNum} in ${backoffDelay/1000}s...`;
+                            jobs[safeId].message = `Rate Limit paused. Retrying segment ${lineNum} in ${backoffDelay/1000}s...`;
                             await delay(backoffDelay);
                         }
                     }
 
                     if (!audioData) {
-                        podcastVtt += `${lineNum}\n${formatVTTTime(currentTime)} --> ${formatVTTTime(currentTime + 1)}\n<v ${segments[i].s}>[Audio generation failed for this chunk]\n\n`;
+                        podcastVtt += `${lineNum}\n${formatVTTTime(currentTime)} --> ${formatVTTTime(currentTime + 1)}\n<v ${segments[i].s}>[Audio generation failed]\n\n`;
                         const oneSecondSilence = Buffer.alloc(48000, 0); 
                         pcmBuffers.push(oneSecondSilence);
                         currentTime += 1;
@@ -379,13 +372,11 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
                     currentTime += duration;
                     
                     if (i < segments.length - 1) {
-                        const nextSpeaker = segments[i + 1].s;
-                        if (nextSpeaker !== segments[i].s) {
+                        if (segments[i + 1].s !== segments[i].s) {
                             const pauseDuration = 0.5;
                             const dynamicSilence = Buffer.alloc(24000 * 2 * pauseDuration, 0); 
                             pcmBuffers.push(dynamicSilence);
                             currentTime += pauseDuration;
-                            await delay(200); 
                         }
                     }
                 }
@@ -447,7 +438,7 @@ app.delete('/api/delete-folder', (req, res) => {
         try {
             fs.rmSync(folder, { recursive: true, force: true });
             res.json({ success: true, message: "Folder safely removed." });
-        } catch (e) { res.status(500).json({ error: "Failed to delete: " + e.message }); }
+        } catch (e) { res.status(500).json({ error: "Failed to delete" }); }
     } else res.status(404).json({ error: "Folder not found" }); 
 });
 
@@ -455,18 +446,14 @@ app.delete('/api/delete-folder', (req, res) => {
 app.get('/api/download-zip', (req, res) => {
     const rawId = req.query.id;
     if (!rawId) return res.status(400).send("Missing ID");
-    
     const safeId = sanitizeId(rawId);
 
     if (jobs[safeId] && (jobs[safeId].status === 'processing' || jobs[safeId].status === 'queued')) {
-        return res.status(409).send("Wait just a little longer! Your podcast is still rendering. Please try downloading again when it says 'Production Complete'.");
+        return res.status(409).send("Podcast is still rendering. Please try again when complete.");
     }
 
     const folderPath = path.join(downloadsDir, safeId);
-
-    if (!fs.existsSync(folderPath)) {
-        return res.status(404).send("Files not found. They may have been deleted.");
-    }
+    if (!fs.existsSync(folderPath)) return res.status(404).send("Files not found.");
 
     res.attachment(`podcast_assets_${safeId}.zip`);
     const archive = archiver('zip', { zlib: { level: 9 } });
@@ -489,7 +476,10 @@ app.get('/api/download-zip', (req, res) => {
     archive.finalize();
 });
 
-const server = app.listen(port, () => console.log(`Studio running securely on port ${port}`));
+const server = app.listen(port, host, () => {
+    console.log(`🚀 Hardened Studio running securely at http://${host}:${port}`);
+    console.log(`🔒 Bound exclusively to 127.0.0.1 (Local Access Only)`);
+});
 server.timeout = 0;
 server.keepAliveTimeout = 0; 
 server.headersTimeout = 0;
