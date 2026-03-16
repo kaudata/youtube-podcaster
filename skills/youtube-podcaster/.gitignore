@@ -1,0 +1,9 @@
+# Dependency directories
+node_modules/
+
+# Environment Variables (CRITICAL)
+.env
+
+# Ignore the dynamic downloads folder so you don't commit giant audio files
+downloads/
+.DS_Store
