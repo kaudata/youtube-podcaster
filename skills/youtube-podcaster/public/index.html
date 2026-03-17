@@ -10,13 +10,34 @@
     <h1>🎙️ AI Podcast Studio</h1>
 
     <div class="card">
-        <div class="form-group">
-            <label>Gemini API Key</label>
-            <input type="password" id="apiKey" placeholder="AIzaSy...">
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>Gemini API Key (For Script)</label>
+                <input type="password" id="apiKey" placeholder="AIzaSy...">
+            </div>
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>OpenAI API Key (For Audio)</label>
+                <input type="password" id="openaiApiKey" placeholder="sk-proj-...">
+            </div>
         </div>
-        <div class="form-group">
-            <label>YouTube URL</label>
-            <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=...">
+
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+            <div class="form-group" style="flex: 3; margin-bottom: 0;">
+                <label>YouTube URL</label>
+                <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label>Transcript Lang</label>
+                <select id="transcriptLang" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; background: white;">
+                    <option value="en" selected>English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="sq">Albanian</option>
+                    <option value="hi">Hindi</option>
+                    <option value="">Auto (Default)</option>
+                </select>
+            </div>
         </div>
 
         <div style="display: flex; gap: 15px; margin-bottom: 15px;">
@@ -105,7 +126,7 @@
             </div>
 
         </div>
-        <pre id="preview-content"></pre>
+        <textarea id="preview-content" readonly style="width: 100%; min-height: 400px; margin-top: 15px; cursor: default; outline: none;"></textarea>
     </div>
 
     <script src="script.js"></script>

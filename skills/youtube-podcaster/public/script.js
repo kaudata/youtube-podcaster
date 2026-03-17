@@ -3,13 +3,23 @@ let currentVideoId = "";
 
 // --- SECURE API KEY STORAGE ---
 let secureApiKey = "";
+let secureOpenAiKey = "";
 
 document.getElementById('apiKey').addEventListener('change', function() {
     if (this.value && this.value !== "••••••••••••••••") {
         secureApiKey = this.value; 
         this.value = "••••••••••••••••"; 
         this.disabled = true; 
-        log("🔐 API Key secured in memory and removed from DOM.");
+        log("🔐 Gemini API Key secured in memory and removed from DOM.");
+    }
+});
+
+document.getElementById('openaiApiKey').addEventListener('change', function() {
+    if (this.value && this.value !== "••••••••••••••••") {
+        secureOpenAiKey = this.value; 
+        this.value = "••••••••••••••••"; 
+        this.disabled = true; 
+        log("🔐 OpenAI API Key secured in memory and removed from DOM.");
     }
 });
 
@@ -20,7 +30,6 @@ function autoResizeEditor() {
     editor.style.height = editor.scrollHeight + 'px';
 }
 
-// Enable/disable the Save button and auto-resize based on input
 document.getElementById('script-editor').addEventListener('input', function() {
     document.getElementById('btn-download-script').disabled = this.value.trim().length === 0;
     autoResizeEditor(); 
@@ -79,6 +88,11 @@ document.getElementById('btn-clear').addEventListener('click', async () => {
     keyInput.value = "";
     keyInput.disabled = false;
 
+    secureOpenAiKey = "";
+    const openaiKeyInput = document.getElementById('openaiApiKey');
+    openaiKeyInput.value = "";
+    openaiKeyInput.disabled = false;
+
     document.getElementById('url').value = "";
     document.getElementById('script-editor').value = "";
     document.getElementById('script-editor').style.height = 'auto';
@@ -103,7 +117,7 @@ document.getElementById('btn-clear').addEventListener('click', async () => {
     document.getElementById('audio-player').removeAttribute('src');
     document.getElementById('audio-player').load(); 
     
-    log("Studio reset for new video. Server wiped. API Key cleared.");
+    log("Studio reset for new video. Server wiped. API Keys cleared.");
 });
 
 // --- FILE PREVIEW VIEWER LOGIC ---
@@ -122,7 +136,8 @@ document.querySelectorAll('.file-preview-link').forEach(link => {
             const rawText = await response.text();
             
             document.getElementById('preview-title').innerText = `👀 Viewing: ${title} (${fileName})`;
-            document.getElementById('preview-content').textContent = rawText;
+            // Changed from textContent to value for the textarea
+            document.getElementById('preview-content').value = rawText;
             document.getElementById('file-preview-modal').style.display = 'block';
             
             document.getElementById('file-preview-modal').scrollIntoView({ behavior: 'smooth' });
@@ -135,11 +150,13 @@ document.querySelectorAll('.file-preview-link').forEach(link => {
 
 document.getElementById('btn-close-preview').addEventListener('click', () => {
     document.getElementById('file-preview-modal').style.display = 'none';
-    document.getElementById('preview-content').textContent = "";
+    // Changed from textContent to value for the textarea
+    document.getElementById('preview-content').value = "";
 });
 
 document.getElementById('btn-copy-preview').addEventListener('click', async () => {
-    const textToCopy = document.getElementById('preview-content').textContent;
+    // Changed from textContent to value for the textarea
+    const textToCopy = document.getElementById('preview-content').value;
     const copyBtn = document.getElementById('btn-copy-preview');
     
     try {
@@ -198,18 +215,19 @@ document.getElementById('btn-download-zip').addEventListener('click', () => {
 // --- STEP 1: TRANSCRIBE ---
 document.getElementById('btn-transcribe').addEventListener('click', async () => {
     const url = document.getElementById('url').value;
+    const lang = document.getElementById('transcriptLang').value;
     if (!url) return alert("Enter a YouTube URL");
     
     currentVideoId = generateNumericId(url); 
     
-    log("Fetching transcript and creating folder securely...");
+    log(`Fetching ${lang ? lang.toUpperCase() : 'Default'} transcript and creating folder securely...`);
     setApiLoading(true);
     
     try {
         const res = await fetch('/api/transcribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url, id: currentVideoId })
+            body: JSON.stringify({ url: url, id: currentVideoId, lang: lang })
         });
         const data = await res.json();
         if (data.fullText) {
@@ -230,7 +248,7 @@ document.getElementById('btn-transcribe').addEventListener('click', async () => 
 // --- SEARCH ---
 document.getElementById('btn-search').addEventListener('click', async () => {
     const query = document.getElementById('search-query').value;
-    if (!query || !secureApiKey) return alert("API Key and Query required."); 
+    if (!query || !secureApiKey) return alert("Gemini API Key and Query required."); 
     
     log("Searching VTT via Gemini...");
     setApiLoading(true);
@@ -263,7 +281,7 @@ document.getElementById('btn-draft').addEventListener('click', async () => {
     const host2 = document.getElementById('host2').value || 'Sam';
     const targetLanguage = document.getElementById('targetLanguage').value || 'English';
 
-    if (!secureApiKey) return alert("API Key required.");
+    if (!secureApiKey) return alert("Gemini API Key required.");
 
     log(`Generating ${targetLanguage} script draft for ${host1} & ${host2}...`);
     setApiLoading(true);
@@ -296,7 +314,8 @@ document.getElementById('btn-generate-audio').addEventListener('click', async fu
     const host1 = document.getElementById('host1').value || 'Alex';
     const host2 = document.getElementById('host2').value || 'Sam';
     
-    if (!secureApiKey) return alert("API Key required.");
+    if (!secureApiKey) return alert("Gemini API Key required for context.");
+    if (!secureOpenAiKey) return alert("OpenAI API Key required for audio generation.");
     if (!script) return alert("Script is empty.");
     
     this.disabled = true; 
@@ -306,7 +325,11 @@ document.getElementById('btn-generate-audio').addEventListener('click', async fu
     try {
         const response = await fetch('/api/synthesize', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': secureApiKey },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'x-api-key': secureApiKey,
+                'x-openai-key': secureOpenAiKey 
+            },
             body: JSON.stringify({ id: currentVideoId, script: script, host1: host1, host2: host2 })
         });
 
