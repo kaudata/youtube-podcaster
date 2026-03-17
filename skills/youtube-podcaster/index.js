@@ -3,6 +3,7 @@ require('dotenv').config();
 
 const express = require('express');
 const { GoogleGenAI } = require('@google/genai');
+const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
@@ -27,10 +28,20 @@ app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 app.use(express.json({ limit: '50mb' }));
 
 // --- HELPER: Unified API Key Resolver ---
-// Prioritizes server-side .env key to keep it off the network, falls back to header
 const getApiKey = (req) => {
     return process.env.GEMINI_API_KEY || req.headers['x-api-key'];
 };
+
+// --- HELPER: HTML Entity Decoder ---
+function decodeHTML(str) {
+    if (!str) return "";
+    return str.replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"')
+              .replace(/&#39;/g, "'")
+              .replace(/&#34;/g, '"');
+}
 
 // --- SECURITY: RATE LIMITING ---
 const globalApiLimiter = rateLimit({
@@ -133,21 +144,23 @@ function formatVTTTime(totalSeconds) {
 
 // 1. Transcribe (POST)
 app.post('/api/transcribe', async (req, res) => {
-    const { url, id } = req.body;
+    const { url, id, lang } = req.body;
     if (!url) return res.status(400).json({ error: "Missing YouTube URL" });
     const safeId = sanitizeId(id);
     const videoDir = path.join(downloadsDir, safeId);
     if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
 
     try {
-        const transcript = await fetchTranscript(url);
-        const fullText = transcript.map(t => t.text).join(' ');
+        const fetchOpts = lang ? { lang: lang } : {};
+        const transcript = await fetchTranscript(url, fetchOpts);
+        
+        const fullText = transcript.map(t => decodeHTML(t.text)).join(' ');
         fs.writeFileSync(path.join(videoDir, 'original.txt'), fullText);
 
         let vtt = "WEBVTT\n\n";
         transcript.forEach((t, i) => {
             const start = new Date(t.offset * 1000).toISOString().substring(11, 19);
-            vtt += `${i+1}\n${start}.000 --> ${start}.500\n${t.text}\n\n`;
+            vtt += `${i+1}\n${start}.000 --> ${start}.500\n${decodeHTML(t.text)}\n\n`;
         });
         fs.writeFileSync(path.join(videoDir, 'original.vtt'), vtt);
         res.json({ fullText });
@@ -179,7 +192,7 @@ app.post('/api/search', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 3. Draft Script (POST)
+// 3. Draft Script (POST) - UPDATED WITH STRICT PROMPT
 app.post('/api/draft-script', async (req, res) => {
     const { id, host1 = 'Alex', host2 = 'Sam', targetLanguage = 'English' } = req.body;
     const apiKey = getApiKey(req);
@@ -193,7 +206,16 @@ app.post('/api/draft-script', async (req, res) => {
         const text = fs.readFileSync(txtPath, 'utf8');
         const genAI = new GoogleGenAI({ apiKey: apiKey });
         
-        const prompt = `Draft a podcast script between ${host1} and ${host2} based on the following text. Use strictly "${host1}: Dialogue" and "${host2}: Dialogue" formatting. The entire script MUST be written seamlessly in ${targetLanguage}.\n\nText: ${text}`;
+        // --- STRICT PROMPT ADDED HERE ---
+        const prompt = `Draft a natural, conversational podcast script between ${host1} and ${host2} based on the following text. 
+
+STRICT FORMATTING RULES:
+1. You MUST use exactly "${host1}: [dialogue]" and "${host2}: [dialogue]" format.
+2. ABSOLUTELY NO MARKDOWN. Do not use asterisks (**), bolding, or italics anywhere in the script.
+3. Output strictly as plain text. 
+4. The entire script MUST be written seamlessly in ${targetLanguage}.
+
+Text: ${text}`;
         
         const result = await genAI.models.generateContent({ 
             model: "gemini-2.5-flash", 
@@ -204,12 +226,13 @@ app.post('/api/draft-script', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. Synthesize Audio (POST)
+// 4. Synthesize Audio (POST) - UPDATED SANITIZER AND VOICES
 app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
     const { id, script, host1 = 'Alex', host2 = 'Sam' } = req.body;
-    const apiKey = getApiKey(req);
+    
+    const openaiApiKey = process.env.OPENAI_API_KEY || req.headers['x-openai-key'];
 
-    if (!apiKey) return res.status(401).json({ error: "API Key required" });
+    if (!openaiApiKey) return res.status(401).json({ error: "OpenAI API Key required" });
     if (!script) return res.status(400).json({ error: "Script content required" });
 
     const safeId = sanitizeId(id);
@@ -237,11 +260,14 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
                 if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
                 fs.writeFileSync(path.join(videoDir, 'script.txt'), script);
 
-                const genAI = new GoogleGenAI({ apiKey: apiKey });
+                const openai = new OpenAI({ apiKey: openaiApiKey });
                 const segments = [];
                 
+                // --- SANITIZER ADDED HERE ---
                 const sanitizedScript = script
                     .replace(/<[^>]*>?/gm, '')               
+                    .replace(/\*\*/g, '')                  // Removes Markdown Bolding
+                    .replace(/\*/g, '')                    // Removes Markdown Italics
                     .replace(/\r\n/g, '\n')                  
                     .replace(/[\u200B-\u200D\uFEFF]/g, '')   
                     .trim();
@@ -306,7 +332,9 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
                     const lineText = segments[i].t;
                     jobs[safeId].message = `Synthesizing chunk ${lineNum} of ${segments.length}...`;
                     
-                    const voiceName = segments[i].s.toLowerCase().includes(maleHostRef) ? "Puck" : "Aoede";
+                    // --- VOICE SWAP ADDED HERE ---
+                    // OpenAI Voice Mapping: Echo is male, Shimmer is female
+                    const voiceName = segments[i].s.toLowerCase().includes(maleHostRef) ? "echo" : "shimmer";
                     
                     let audioData = null;
                     let attempt = 0;
@@ -314,45 +342,41 @@ app.post('/api/synthesize', synthesizeLimiter, (req, res) => {
 
                     while (attempt <= maxRetries) {
                         try {
-                            const timeoutPromise = new Promise((_, reject) =>
-                                setTimeout(() => reject(new Error('API_TIMEOUT: Gemini took too long to respond')), 30000)
-                            );
-
-                            const apiPromise = genAI.models.generateContent({
-                                model: 'gemini-2.5-flash-preview-tts',
-                                contents: lineText,
-                                config: {
-                                    responseModalities: ["AUDIO"],
-                                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } }
-                                }
+                            const response = await openai.audio.speech.create({
+                                model: "tts-1", 
+                                voice: voiceName,
+                                input: lineText,
+                                response_format: "pcm" 
                             });
 
-                            const response = await Promise.race([apiPromise, timeoutPromise]);
-                            const base64Audio = response.candidates[0].content.parts[0].inlineData.data;
-                            audioData = Buffer.from(base64Audio, 'base64');
-                            
-                            // STRIP WAV HEADERS TO PREVENT AUDIO CLICKS
-                            if (audioData.length > 44 && audioData.toString('utf8', 0, 4) === 'RIFF') {
-                                audioData = audioData.subarray(44); 
-                            }
+                            audioData = Buffer.from(await response.arrayBuffer());
                             break; 
+
                         } catch (apiError) {
                             attempt++;
-                            const errorMessage = apiError.message || "";
                             
-                            const isQuotaExhausted = errorMessage.includes('Quota exceeded') || errorMessage.includes('RESOURCE_EXHAUSTED');
-                            if (isQuotaExhausted) {
-                                jobs[safeId] = { status: 'error', message: "API Daily Quota Exceeded (100 requests/day)." };
+                            const status = apiError.status || (apiError.response && apiError.response.status);
+                            const errorCode = apiError.error?.code || apiError.code;
+                            const errorMessage = apiError.message || "Unknown error occurred";
+
+                            if (status === 401) {
+                                jobs[safeId] = { status: 'error', message: "Invalid OpenAI API Key provided." };
+                                return resolveTask(); 
+                            }
+
+                            if (status === 429 && errorCode === 'insufficient_quota') {
+                                jobs[safeId] = { status: 'error', message: "OpenAI Account Error: Insufficient quota/credits." };
                                 return resolveTask();
                             }
 
-                            const isRateLimit = apiError.status === 429 || errorMessage.includes('429');
-                            if (attempt > maxRetries || !isRateLimit) {
-                                break; 
+                            if (attempt > maxRetries || (status >= 400 && status < 500 && status !== 429)) {
+                                jobs[safeId] = { status: 'error', message: `OpenAI Error: ${errorMessage}` };
+                                return resolveTask(); 
                             }
                             
                             const backoffDelay = Math.pow(2, attempt) * 1000; 
-                            jobs[safeId].message = `Rate Limit paused. Retrying segment ${lineNum} in ${backoffDelay/1000}s...`;
+                            jobs[safeId].message = `OpenAI Rate Limit hit. Retrying segment ${lineNum} in ${backoffDelay/1000}s...`;
+                            
                             await delay(backoffDelay);
                         }
                     }
