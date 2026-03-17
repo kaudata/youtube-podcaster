@@ -1,6 +1,6 @@
 ---
 name: youtube-podcaster
-description: Converts a YouTube video into a multi-voice AI podcast using a local Node.js API and FFmpeg.
+description: Extracts the original text of a Youtube video and converts it into a multi-voice AI podcast using Gemini for script generation, OpenAI for TTS, and a local Node.js API with FFmpeg. It also can show you the text of the Podcast in WebVTT format.
 metadata:
   openclaw:
     requires:
@@ -11,19 +11,20 @@ metadata:
         - ffmpeg
       env:
         - GEMINI_API_KEY
+        - OPENAI_API_KEY
     always: false
 ---
 
 # YouTube Podcaster
 
-This skill enables the automated conversion of YouTube videos into multi-host AI podcasts. It manages transcription, script generation via Gemini, and audio synthesis locally.
+This skill enables the automated conversion of YouTube videos into multi-host AI podcasts. It manages transcription, script generation via Gemini, and audio synthesis via OpenAI locally.
 
 ## Security Setup
 For maximum security, the backend server binds strictly to `127.0.0.1`. It is not accessible from your local network or the internet.
 
 1. **Install Dependencies:** You must run the install command once before the first use. Say: 
    `Run the npm install command for the youtube-podcaster skill`.
-2. **Credentials:** Place your Gemini API Key in the `.env` file within the skill folder (`skills/youtube-podcaster/.env`) using the variable name `GEMINI_API_KEY`.
+2. **Credentials:** Place your Gemini API Key and OpenAI API Key in the `.env` file within the skill folder (`skills/youtube-podcaster/.env`) using the variable names `GEMINI_API_KEY` and `OPENAI_API_KEY`.
 3. **Execution:** Start the server with `npm start` or by instructing the agent: `Start the local server for the youtube-podcaster skill`.
 
 ## Usage
@@ -33,7 +34,7 @@ Once the server is running, say:
 The skill orchestrates three local API calls to `localhost:7860`:
 1. **Transcription:** Extracts text via the YouTube transcript API.
 2. **Drafting:** Uses Gemini to create a natural dialogue script.
-3. **Synthesis:** Uses Gemini TTS and FFmpeg to generate a gapless `.m4a` file.
+3. **Synthesis:** Uses OpenAI TTS (tts-1) and FFmpeg to generate a gapless `.m4a` file.
 
 ## Safe Cleanup
 When you are finished using the studio, shut down the background process to free up system resources. Do not use generic kill commands. Instead, instruct the agent to use the tracked process ID:
